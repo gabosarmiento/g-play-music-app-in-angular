@@ -268,11 +268,11 @@ var setupSeekBars = function() {
    albumArtUrl: '/images/album-placeholder.png',
  
    songs: [
-      { name: 'Blue', length: '4:26', audioUrl: '/music/placeholders/blue' },
-      { name: 'Green', length: '3:14', audioUrl: '/music/placeholders/green' },
-      { name: 'Red', length: '5:01', audioUrl: '/music/placeholders/red' },
-      { name: 'Pink', length: '3:21', audioUrl: '/music/placeholders/pink' },
-      { name: 'Magenta', length: '2:15', audioUrl: '/music/placeholders/magenta' }
+      { name: 'Blue', length: 163.38, audioUrl: '/music/placeholders/blue' },
+      { name: 'Green', length: 105.66 , audioUrl: '/music/placeholders/green' },
+      { name: 'Red', length: 270.14, audioUrl: '/music/placeholders/red' },
+      { name: 'Pink', length: 154.81, audioUrl: '/music/placeholders/pink' },
+      { name: 'Magenta', length: 375.92, audioUrl: '/music/placeholders/magenta' }
      ]
  };
 
@@ -365,9 +365,21 @@ gPlay.controller('Album.controller', ['$scope','SongPlayer', function($scope, So
 
 gPlay.controller('PlayerBar.controller', ['$scope', 'SongPlayer', function($scope, SongPlayer) {
   $scope.songPlayer = SongPlayer;
+  $scope.volumeClass = function() {
+    return {
+      'fa-volume-off': SongPlayer.volume == 0,
+      'fa-volume-down': SongPlayer.volume <= 70 && SongPlayer.volume > 0,
+      'fa-volume-up': SongPlayer.volume > 70
+    }
+  };
+  SongPlayer.onTimeUpdate(function(event, time){
+    $scope.$apply(function(){
+      $scope.playTime = time;
+    });
+  });
 }]);
 
-gPlay.service('SongPlayer', function() {
+gPlay.service('SongPlayer', ['$rootScope', function($rootScope) {
   var currentSoundFile = null;
 
   var trackIndex = function(album, song) {
@@ -378,6 +390,7 @@ gPlay.service('SongPlayer', function() {
     currentSong: null,
     currentAlbum: null,
     playing: false,
+    volume: 80,
 
     play: function() {
       this.playing = true;
@@ -405,18 +418,155 @@ gPlay.service('SongPlayer', function() {
        var song = this.currentAlbum.songs[currentTrackIndex];
        this.setSong(this.currentAlbum, song);
     },
+    seek: function(time) {
+      // Checks to make sure that a sound file is playing before seeking.
+      if(currentSoundFile) {
+       // Uses a Buzz method to set the time of the song.
+        currentSoundFile.setTime(time);
+      }
+    },
+    setVolume: function(volume){
+      if(currentSoundFile){
+        currentSoundFile.setVolume(volume);
+      }
+      this.volume = volume;
+    },
+    onTimeUpdate: function(callback) {
+      return $rootScope.$on('sound:timeupdate', callback);
+    },
     setSong: function(album, song) {
       if (currentSoundFile) {
         currentSoundFile.stop();
       }
       this.currentAlbum = album;
       this.currentSong = song;
+
       currentSoundFile = new buzz.sound(song.audioUrl, {
          formats: [ "mp3" ],
          preload: true
       });
+      currentSoundFile.setVolume(this.volume);
+      currentSoundFile.bind('timeupdate', function(e){
+        $rootScope.$broadcast('sound:timeupdate', this.getTime());
+      });
       this.play();
     }
+  };
+}]);
+gPlay.directive('slider', ['$document', function($document){
+  // Returns a number between 0 and 1 to determine where the mouse event happened along the slider bar.
+  var calculateSliderPercentFromMouseEvent = function($slider, event) {
+    var offsetX =  event.pageX - $slider.offset().left; // Distance from left
+    var sliderWidth = $slider.width(); // Width of slider
+    var offsetXPercent = (offsetX  / sliderWidth);
+    offsetXPercent = Math.max(0, offsetXPercent);
+    offsetXPercent = Math.min(1, offsetXPercent);
+    return offsetXPercent;
+  };
+
+  var numberFromValue = function(value, defaultValue) {
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if(typeof value === 'undefined') {
+      return defaultValue;
+    }
+
+    if(typeof value === 'string') {
+      return Number(value);
+    }
+  };
+  return {
+    templateUrl: '/templates/directives/slider.html', 
+    replace: true, //This instructs Angular to replace the <slider> element with our directive's HTML rather than insert the HTML within it.
+    restrict: 'E',
+    scope: {
+      onChange: '&'
+    },
+    link: function(scope, element, attributes){
+      scope.value = 0;
+      scope.max = 100;
+      var $seekBar = $(element);
+      attributes.$observe('value', function(newValue) {
+       scope.value = numberFromValue(newValue, 0);
+      });
+
+     attributes.$observe('max', function(newValue) {
+       scope.max = numberFromValue(newValue, 100) || 100;
+     });     
+
+     var percentString = function() {
+        var value = scope.value || 0;
+        var max = scope.max || 100;
+        percent = value / max * 100;
+        return percent + "%";
+      };
+
+      scope.fillStyle = function() {
+        return {width: percentString()};
+      };
+
+      scope.thumbStyle = function() {
+        return {left: percentString()};
+      };
+
+      scope.onClickSlider = function(event){
+        var percent = calculateSliderPercentFromMouseEvent($seekBar, event);
+        scope.value = percent * scope.max;
+        notifyCallback(scope.value);
+      };
+
+      scope.trackThumb = function() {
+        $document.bind('mousemove.thumb', function(event){
+          var percent = calculateSliderPercentFromMouseEvent($seekBar, event);
+          scope.$apply(function(){
+            scope.value = percent * scope.max;
+            notifyCallback(scope.value);
+          });
+        });
+
+        //cleanup
+        $document.bind('mouseup.thumb', function(){
+        $document.unbind('mousemove.thumb');
+        $document.unbind('mouseup.thumb');
+        });
+        };
+
+        var notifyCallback = function(newValue) {
+        if(typeof scope.onChange === 'function') {
+          scope.onChange({value: newValue});
+         }
+        }; 
+    }
+  };
+}]);
+
+gPlay.filter('timecode', function(){
+  return function(seconds){
+    seconds = Number.parseFloat(seconds);
+    // Returned when no time is provided.
+    if (Number.isNaN(seconds)) {
+      return '-:--';
+    }
+
+    // make it a whole number
+    var wholeSeconds = Math.floor(seconds);
+
+    var minutes = Math.floor(wholeSeconds / 60);
+
+    remainingSeconds = wholeSeconds % 60;
+
+    var output = minutes + ':';
+
+    // zero pad seconds, so 9 seconds should be :09
+    if (remainingSeconds < 10) {
+      output += '0';
+    }
+
+    output += remainingSeconds;
+
+    return output;
   };
 });
 });
