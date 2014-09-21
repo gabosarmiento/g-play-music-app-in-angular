@@ -16,18 +16,27 @@
    background: -webkit-linear-gradient(45deg ,#380c77,#FF6600);
    background: linear-gradient(45deg , #380c77,#FF6600);
    padding-bottom: 150px;
- }
-
-body.landing {
-  background: #5B5579;
-  padding-bottom: 0;
-  .navbar {
-  margin-bottom: 0;
+  .navbar{
+    padding-bottom: 0;
+    margin-bottom: 0;
   }
 }
 /* medium-purple: #7B46A3 - 123, 70, 163 */
 
 .player-header-nav {
   background-color: rgba(123, 70, 163, .9);
+  .navbar-nav {
+    a {
+      line-height: 45px;
+      color: white;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 1.2;
+ 
+      &:hover {
+         color: #FF6600;
+         background: #380c77;
+      }
+    }
+  }
 }
-
